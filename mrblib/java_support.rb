@@ -1,15 +1,10 @@
 class JavaSupport
 
   def initialize
-    @runtime, @java_server_dl, @java_client_dl = resolve_java_home
-  end
-
-  def resolve_java_home
-    info = attempt_javacmd(ENV['JAVACMD']) ||
+    found = attempt_javacmd(ENV['JAVACMD']) ||
       attempt_java_home(ENV['JAVA_HOME']) ||
            resolve_native_java_home
-    raise "no java_home found." unless info
-    info
+    raise "no java_home found." unless found
   end
 
   def resolve_native_java_home
@@ -31,7 +26,10 @@ class JavaSupport
   end
 
   def attempt_java_home(path)
-    return nil unless dir.exists?(path) || exists_or_nil(resolve_java_exe(path))
+    exe = exists_or_nil(resolve_java_exe(path))
+    return nil unless dir.exists?(path) || exe
+
+    @java_exe = exe  # perhaps double setting from attempt_javacmd but it is same value
 
     try_jdk_home(path) || try_jre_home(path) || try_jdk9_home(path)
   end
@@ -40,19 +38,19 @@ class JavaSupport
     sdl = exists_or_nil(resolve_jdk_server_dl(path))
     cdl = exists_or_nil(resolve_jdk_client_dl(path))
     return nil unless cdl or sdl
-     [:jdk, sdl, cdl]
+    @runtime, @java_server_dl, @java_client_dl = :jdk, sdl, cdl
   end
 
   def is_jdk9_home?(path)
     sdl = exists_or_nil(resolve_jdk9_server_dl(path))
     return nil unless sdl
-    [:jdk9, sdl, nil]
+    @runtime, @java_server_dl = :jdk8, sdl
   end
 
   def is_jre_home?(path)
     cdl = exists_or_nil(resolve_jre_client_dl(path))
     return nil unless cdl
-    [:jre, nil, cdl]
+    @runtime, @java_client_dl = :jre, cdl
   end
 
   def resolve_java_exe(java_home)
