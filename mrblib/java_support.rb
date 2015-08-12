@@ -1,86 +1,58 @@
 class JavaSupport
 
   def initialize
-    resolve_java_home
+    @runtime, @java_server_dl, @java_client_dl = resolve_java_home
   end
 
   def resolve_java_home
-    if attempt_javacmd(ENV['JAVACMD'])
-      return true
-    elsif attempt_java_home(ENV['JAVA_HOME'])
-      return true
-    elsif resolve_native_java_home
-      return true
-    end
-    raise "No JAVA_HOME found."
+    info = attempt_javacmd(ENV['JAVACMD']) ||
+      attempt_java_home(ENV['JAVA_HOME']) ||
+           resolve_native_java_home
+    raise "no java_home found." unless info
+    info
   end
 
   def resolve_native_java_home
     native_java_home = find_native_java
-    if native_java_home
-      native_java_home.strip!
-      if native_java_home.match(/\/bin\/java$/)
-        native_java_home = File.expand_path("../..", native_java_home)
-      end
-      attempt_java_home(native_java_home)
+    return nil unless native_java_home
+    native_java_home.strip!
+    if native_java_home.match(/\/bin\/java$/)
+      native_java_home = file.expand_path("../..", native_java_home)
     end
+    attempt_java_home(native_java_home)
   end
 
   def attempt_javacmd(javacmd)
-    if javacmd
-      @java_exe = javacmd
-      java_bin = File.dirname(javacmd)
-      return attempt_java_home(File.dirname(java_bin))
-    end
-    false
+    return nil unless javacmd
+
+    @java_exe = javacmd
+    java_bin = file.dirname(javacmd)
+    attempt_java_home(file.dirname(java_bin))
   end
 
   def attempt_java_home(path)
-    is_java_home?(path) do |runtime, exe, server_dl, client_dl|
-      @runtime = runtime
-      @java_exe ||= exe
-      @java_server_dl = server_dl
-      @java_client_dl = client_dl
-      @java_home = path
-    end
+    return nil unless dir.exists?(path) || exists_or_nil(resolve_java_exe(path))
+
+    try_jdk_home(path) || try_jre_home(path) || try_jdk9_home(path)
   end
 
-  def is_java_home?(path, &block)
-    is_jdk_home?(path, &block) ||
-    is_jre_home?(path, &block) ||
-    is_jdk9_home?(path, &block) ||
-    false
-  end
-
-  def is_jdk_home?(path)
-    if path and Dir.exists?(path)
-      exe = exists_or_nil(resolve_java_exe(path))
-      sdl = exists_or_nil(resolve_jdk_server_dl(path))
-      cdl = exists_or_nil(resolve_jdk_client_dl(path))
-      if exe and (cdl or sdl)
-        yield :jdk, exe, sdl, cdl
-      end
-    end
+  def try_jdk_home(path)
+    sdl = exists_or_nil(resolve_jdk_server_dl(path))
+    cdl = exists_or_nil(resolve_jdk_client_dl(path))
+    return nil unless cdl or sdl
+     [:jdk, sdl, cdl]
   end
 
   def is_jdk9_home?(path)
-    if path and Dir.exists?(path.strip)
-      exe = exists_or_nil(resolve_java_exe(path))
-      sdl = exists_or_nil(resolve_jdk9_server_dl(path))
-      if exe and sdl
-        yield :jdk9, exe, sdl, nil
-      end
-    end
+    sdl = exists_or_nil(resolve_jdk9_server_dl(path))
+    return nil unless sdl
+    [:jdk9, sdl, nil]
   end
 
   def is_jre_home?(path)
-    if path and Dir.exists?(path)
-      exe = exists_or_nil(resolve_java_exe(path))
-      cdl = exists_or_nil(resolve_jre_client_dl(path))
-      if exe and cdl
-        yield :jre, exe, nil, cdl
-      end
-    end
+    cdl = exists_or_nil(resolve_jre_client_dl(path))
+    return nil unless cdl
+    [:jre, nil, cdl]
   end
 
   def resolve_java_exe(java_home)
